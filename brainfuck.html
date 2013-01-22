@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>brainfuck.rb</title>
+  <link rel="stylesheet" href="http://jashkenas.github.com/docco/resources/docco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <table cellspacing=0 cellpadding=0>
+  <thead>
+    <tr>
+      <th class=docs><h1>brainfuck.rb</h1></th>
+      <th class=code></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr id='section-Disclaimer'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-Disclaimer">&#182;</a>
+        </div>
+        <h2>Disclaimer</h2>
+
+<p>This is the commented version of my little Brainfuck compiler, The code is
+meant for educational purpose. Please note that this compiler is <em>NOT</em> save.
+It is trivial to generate Brainfuck programs that execute arbitrary code on
+your machine by moving beyond the intended memory and corrupting stack
+information. Again: <em>DO NOT LET ANYONE EXECUTE CODE WITH THIS ON YOUR
+MACHINE</em>.</p>
+
+<p>This code is released under WTFPL:</p>
+
+<pre><code>   DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+               Version 2, December 2004
+</code></pre>
+
+<p>Copyright &copy; 2004 Sam Hocevar <a href="mailto:sam@hocevar.net">sam@hocevar.net</a></p>
+
+<p>Everyone is permitted to copy and distribute verbatim or modified
+copies of this license document, and changing it is allowed as long
+as the name is changed.</p>
+
+<pre><code>       DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+</code></pre>
+
+<p>TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION</p>
+
+<ol>
+<li>You just DO WHAT THE FUCK YOU WANT TO.</li>
+</ol>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre></pre></div>
+      </td>
+    </tr>
+    <tr id='section-Setup'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-Setup">&#182;</a>
+        </div>
+        <h2>Setup</h2>
+
+<p>You will need the ruby-llvm gem for this to run. You will probably have to compile llvm 3.0 with</p>
+
+<pre><code> $ ./configure &mdash;enable-jit &mdash;enable-shared &mdash;enable-optimized
+ $ make &amp;&amp; sudo make install
+</code></pre>
+
+<p>Then you most likely will have to copy the llvm binary to a place where FFI finds it
+In my case this was</p>
+
+<pre><code> $ cp /usr/lib/x86_64-linux-gnu/libLLVM-3.0.so.1 &ldquo;~/.rvm/usr/lib/libLLVM-3.0.so&rdquo;
+</code></pre>
+
+<p>You can figure out where FFI looks for libraries by running</p>
+
+<pre><code> $ strace -o dump &ldquo;ruby brainfuck.rb&rdquo;
+ $ cat dump| grep open | grep llvm-3.0.so
+</code></pre>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre></pre></div>
+      </td>
+    </tr>
+    <tr id='section-Code'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-Code">&#182;</a>
+        </div>
+        <h2>Code</h2>
+
+<p>Just some requires for llvm</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="nb">require</span> <span class="s1">&#39;llvm/core&#39;</span>
+<span class="nb">require</span> <span class="s1">&#39;llvm/execution_engine&#39;</span>
+<span class="nb">require</span> <span class="s1">&#39;llvm/transforms/scalar&#39;</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-4'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-4">&#182;</a>
+        </div>
+        <p>We will use this class to generate a LLVM module containing a single main function that executes our
+brainfuck program.</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="k">class</span> <span class="nc">Generator</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-5'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-5">&#182;</a>
+        </div>
+        <p>This method will add a function with the given <code>name</code> to the module given as <code>mod</code>. Its body will contain the compiled brainfuck <code>code</code>.</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">build</span><span class="p">(</span><span class="n">code</span><span class="p">,</span><span class="nb">name</span><span class="p">,</span> <span class="n">mod</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-6'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-6">&#182;</a>
+        </div>
+        <p>Create a new function with the given <code>name</code>, taking no arguments, ad returning a single <code>LLVM::Int</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>    <span class="n">mod</span><span class="o">.</span><span class="n">functions</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="nb">name</span><span class="p">,</span> <span class="o">[]</span><span class="p">,</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">)</span> <span class="k">do</span> <span class="o">|</span><span class="n">f</span><span class="o">|</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-7'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-7">&#182;</a>
+        </div>
+        <p>LLVM handles code in so call <strong>Basic Blocks</strong>. A basic block is a linear
+sequence of instructions without incoming jumps. E.g. only the first
+instruction in a basic block can be jumped to / called to. However a basic
+block may jump/call to as many other basic blocks as it wants. Every basic
+block has to end in a jump to another block or a return.</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre></pre></div>
+      </td>
+    </tr>
+    <tr id='section-8'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-8">&#182;</a>
+        </div>
+        <p>Create a basic block that is used as entry point of the function (remember we
+can only jump/call to the begin of a basic block)</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">entry</span><span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">basic_blocks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;entry&quot;</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-9'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-9">&#182;</a>
+        </div>
+        <p>We will need a loop that initializes the memory for our program, this loop
+needs a loop header <code>init_loop</code> that will check whether we have initialized all memory
+fields to 0 and a body <code>init_body</code> that will initializes a single memory cell to 0 per
+iteration then jumps back to the loop header. Finally we need the <code>body</code> of our
+function actually containing the brainfuck code.</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">init_loop</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">basic_blocks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;init loop&quot;</span><span class="p">)</span>
+      <span class="n">init_body</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">basic_blocks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;init body&quot;</span><span class="p">)</span>
+      <span class="n">body</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">basic_blocks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;body&quot;</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-10'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-10">&#182;</a>
+        </div>
+        <p>we will support the <code>.</code> instruction which needs output. We declare the
+standard function <code>putchar</code> as external function which takes one <code>LLVM::Int</code>
+and returns another one</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="vi">@putchar</span> <span class="o">=</span> <span class="n">mod</span><span class="o">.</span><span class="n">functions</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">&quot;putchar&quot;</span><span class="p">,</span> <span class="o">[</span><span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="o">]</span><span class="p">,</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-11'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-11">&#182;</a>
+        </div>
+        <p>Now we will start to construct the actual program. We use the <code>builder</code>
+object which allows us to add code to any given basic block</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">entry</span><span class="o">.</span><span class="n">build</span> <span class="k">do</span> <span class="o">|</span><span class="n">builder</span><span class="o">|</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-12'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-12">&#182;</a>
+        </div>
+        <p>We create two stack variables, one containing the brainfuck pointer <code>@offset</code>,
+the other containing an array of 1000 <code>LLVM::Int</code> cells</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="vi">@offset</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">alloca</span><span class="p">(</span><span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">)</span>
+        <span class="vi">@data</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">array_alloca</span><span class="p">(</span><span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">,</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">1000</span><span class="p">))</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-13'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-13">&#182;</a>
+        </div>
+        <p>The offset will point to he first element of the array for initialization</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="vi">@offset</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-14'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-14">&#182;</a>
+        </div>
+        <p>br creates a <code>branch</code> or jump instruction. After setting up the stack space we
+will jump into the initialization loop</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">builder</span><span class="o">.</span><span class="n">br</span> <span class="n">init_loop</span>
+      <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-15'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-15">&#182;</a>
+        </div>
+        <p>This is the header of the init loop, it checks if <code>@offset</code> points to the last
+element in the array. If it does the loop will be aborted and the real code
+begins, otherwise another iteration is performed.</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">init_loop</span><span class="o">.</span><span class="n">build</span> <span class="k">do</span> <span class="o">|</span><span class="n">builder</span><span class="o">|</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-16'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-16">&#182;</a>
+        </div>
+        <p>create a integer equality operation, comparing the content of the <code>@offset</code> variable with the constant 1000</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">cmp</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">icmp</span><span class="p">(</span><span class="ss">:eq</span><span class="p">,</span> <span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="vi">@offset</span><span class="p">),</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">1000</span><span class="p">))</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-17'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-17">&#182;</a>
+        </div>
+        <p>create a conditional jump that jumps to the main <code>body</code> if <code>@offset == 1000</code>
+holds and to the init loop body <code>init_body</code> otherwise</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">builder</span><span class="o">.</span><span class="n">cond</span><span class="p">(</span> <span class="n">cmp</span> <span class="p">,</span> <span class="n">body</span><span class="p">,</span> <span class="n">init_body</span><span class="p">)</span>
+      <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-18'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-18">&#182;</a>
+        </div>
+        <p>This is the body of the init loop</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">init_body</span><span class="o">.</span><span class="n">build</span> <span class="k">do</span> <span class="o">|</span><span class="n">builder</span><span class="o">|</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-19'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-19">&#182;</a>
+        </div>
+        <p>Store the constant 0 in <code>@data[@offset]</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">addr</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">gep</span><span class="p">(</span><span class="vi">@data</span><span class="p">,</span> <span class="o">[</span><span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="vi">@offset</span><span class="p">)</span><span class="o">]</span><span class="p">)</span>
+        <span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">addr</span><span class="p">)</span> <span class="c1">#init cell to 0</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-20'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-20">&#182;</a>
+        </div>
+        <p>Move the pointer to the right by one cell (e.g. increment <code>@offset</code> by one)</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">right</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span> <span class="c1">#move ptr to right</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-21'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-21">&#182;</a>
+        </div>
+        <p>Jump back to the loop header to check whether we are done</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">builder</span><span class="o">.</span><span class="n">br</span> <span class="n">init_loop</span> <span class="c1">#initialize next field</span>
+      <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-22'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-22">&#182;</a>
+        </div>
+        <p>Finally we arrive at the main body of the brainfuck code</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">body</span><span class="o">.</span><span class="n">build</span> <span class="k">do</span> <span class="o">|</span><span class="n">builder</span><span class="o">|</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-23'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-23">&#182;</a>
+        </div>
+        <p>Initialize <code>@offset</code> to point to the center of the memory</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">500</span><span class="p">),</span> <span class="vi">@offset</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-24'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-24">&#182;</a>
+        </div>
+        <p>Parse the string given as brainfuck code into our intermediate representation</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">code_arry</span> <span class="o">=</span> <span class="n">parse</span><span class="p">(</span><span class="n">code</span><span class="p">)</span>
+        <span class="nb">puts</span> <span class="n">code_arry</span><span class="o">.</span><span class="n">inspect</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-25'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-25">&#182;</a>
+        </div>
+        <p>We then call the function <code>code_gen</code> that will transform the brainfuck code
+into LLVM instructions appended to the basic block currently pointed to by
+<code>builder</code>. It may be necessary to generate new basic blocks (e.G. if loops
+are used inside of the brainfuck program, thus we need to pass the function <code>f</code> as well.</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">builder</span> <span class="o">=</span> <span class="n">code_gen</span><span class="p">(</span><span class="n">code_arry</span><span class="p">,</span><span class="n">f</span><span class="p">,</span> <span class="n">builder</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-26'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-26">&#182;</a>
+        </div>
+        <p>Now all the brainfuck code has been generated an builder points to the last
+basic block created. Simply add a return statement that returns the content of
+the current memory cell</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">builder</span><span class="o">.</span><span class="n">ret</span><span class="p">(</span><span class="n">deref</span><span class="p">(</span><span class="n">builder</span><span class="p">))</span>
+     <span class="k">end</span>
+    <span class="k">end</span>
+  <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-27'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-27">&#182;</a>
+        </div>
+        <p>This function parses a brainfuck string and returns an intermediate representation.
+For example the string:
+  <code>&ldquo;++[&gt;++&lt;&ndash;] calculate 2*2 .&rdquo;</code>
+becomes the intermediate representation:
+  <code>[&ldquo;+&rdquo;,&ldquo;+&rdquo;, [ &ldquo;&gt;&rdquo;, &ldquo;+&rdquo;,&ldquo;+&rdquo;,&ldquo;&lt;&rdquo;,&ldquo;&ndash;&rdquo; ] &ldquo;.&rdquo;]</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">parse</span><span class="p">(</span><span class="n">data</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-28'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-28">&#182;</a>
+        </div>
+        <p>Remove all non-brainfuck instruction characters (they are considered to be comments in brainfuck)</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>    <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">gsub</span><span class="p">(</span><span class="sr">/[^\[\]\-+,.&lt;&gt;]/</span><span class="p">,</span><span class="s2">&quot;&quot;</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-29'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-29">&#182;</a>
+        </div>
+        <p>match the outermost pair of <code>[]</code> (e.g. the outermost loop) as well as all
+simple instructions (e.g. <code>.&lt;&gt;+&ndash;</code>) before and after the loop</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>    <span class="n">md</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="sr">/\A(?&lt;beg&gt;[^\[]+)\[(?&lt;in&gt;.*)\](?&lt;out&gt;[^\[]+)\Z/</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-30'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-30">&#182;</a>
+        </div>
+        <p>If there happens to be a loop we will split all the simple instructions into an array, holding one string per instruction and another Array that contains the loop body</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>    <span class="k">if</span> <span class="n">md</span>
+      <span class="k">return</span> <span class="n">md</span><span class="o">[</span><span class="ss">:beg</span><span class="o">].</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="o">[</span><span class="n">parse</span><span class="p">(</span><span class="n">md</span><span class="o">[</span><span class="ss">:in</span><span class="o">]</span><span class="p">)</span><span class="o">]</span> <span class="o">+</span> <span class="n">md</span><span class="o">[</span><span class="ss">:out</span><span class="o">].</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+    <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-31'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-31">&#182;</a>
+        </div>
+        <p>If there is no loop the simply splitting suffices</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>    <span class="k">return</span> <span class="n">data</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+  <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-32'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-32">&#182;</a>
+        </div>
+        <p>After we parsed our string into <code>code</code> we will now append all the necessary
+instructions to the basic block of <code>builder</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">code_gen</span><span class="p">(</span><span class="n">code</span><span class="p">,</span><span class="n">f</span><span class="p">,</span> <span class="n">builder</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-33'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-33">&#182;</a>
+        </div>
+        <p>iterate over every element of the representation</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>    <span class="n">code</span><span class="o">.</span><span class="n">each</span> <span class="k">do</span> <span class="o">|</span><span class="n">instr</span><span class="o">|</span>
+      <span class="k">case</span> <span class="n">instr</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-34'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-34">&#182;</a>
+        </div>
+        <p>If it is an <code>Array</code> (e.g. a loop) then call <code>loop_gen</code>. This function
+introduces new basic blocks, thus we have to update our builder</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="k">when</span> <span class="nb">Array</span> <span class="k">then</span> <span class="n">builder</span> <span class="o">=</span> <span class="n">loop_gen</span><span class="p">(</span><span class="n">instr</span><span class="p">,</span><span class="n">f</span><span class="p">,</span> <span class="n">builder</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-35'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-35">&#182;</a>
+        </div>
+        <p>If it is a simple instruction just call the corresponding generator
+function. All these functions only append code to the same block so no updates
+to builder are necessary</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="k">when</span> <span class="s2">&quot;&gt;&quot;</span> <span class="k">then</span> <span class="n">right</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span>
+        <span class="k">when</span> <span class="s2">&quot;&lt;&quot;</span> <span class="k">then</span> <span class="n">left</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span>
+        <span class="k">when</span> <span class="s2">&quot;+&quot;</span> <span class="k">then</span> <span class="n">inc</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span>
+        <span class="k">when</span> <span class="s2">&quot;-&quot;</span> <span class="k">then</span> <span class="n">dec</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span>
+        <span class="k">when</span> <span class="s2">&quot;.&quot;</span> <span class="k">then</span> <span class="n">put</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span>
+      <span class="k">end</span>
+    <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-36'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-36">&#182;</a>
+        </div>
+        <p>Finally return builder so that the callee knows where to continue with code generation</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>    <span class="k">return</span> <span class="n">builder</span>
+  <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-37'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-37">&#182;</a>
+        </div>
+        <p>This function will append a brainfuck loop containing <code>code</code> to the block that <code>builder</code> holds.</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">loop_gen</span><span class="p">(</span><span class="n">code</span><span class="p">,</span><span class="n">f</span><span class="p">,</span> <span class="n">builder</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-38'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-38">&#182;</a>
+        </div>
+        <p>To do so it needs three new basic blocks: <code>loop_head</code> (tests whether the loop
+condition still holds) <code>loop_body</code> (holds all the code from the loop body) and
+<code>loop_next</code> (a new block that is used to generate all the code <em>after</em> the
+loop)</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">loop_head</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">basic_blocks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;loop head&quot;</span><span class="p">)</span>
+      <span class="n">loop_body</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">basic_blocks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;loop body&quot;</span><span class="p">)</span>
+      <span class="n">loop_next</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">basic_blocks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;loop next&quot;</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-39'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-39">&#182;</a>
+        </div>
+        <p>add a jump to the <code>loop_head</code> to the current basic block
+Thus the current basic block of <code>builder</code> becomes irrelevant</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">builder</span><span class="o">.</span><span class="n">br</span><span class="p">(</span><span class="n">loop_head</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-40'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-40">&#182;</a>
+        </div>
+        <p>Make the <code>loop_head</code> the new current basic block of the builder</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">builder</span><span class="o">.</span><span class="n">position_at_end</span><span class="p">(</span><span class="n">loop_head</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-41'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-41">&#182;</a>
+        </div>
+        <p>Add the loop condition <code>@data[@offset] != 0</code> to the <code>loop_head</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">cond</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">icmp</span><span class="p">(</span><span class="ss">:eq</span><span class="p">,</span> <span class="n">deref</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span> <span class="p">,</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-42'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-42">&#182;</a>
+        </div>
+        <p>exit the loop by jumping to <code>loop_next</code> if the condition doesn&rsquo;t hold,
+continue with the loop otherwise</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">builder</span><span class="o">.</span><span class="n">cond</span><span class="p">(</span> <span class="n">cond</span> <span class="p">,</span> <span class="n">loop_next</span><span class="p">,</span> <span class="n">loop_body</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-43'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-43">&#182;</a>
+        </div>
+        <p>Generate the basic block <code>loop_body</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">loop_body</span><span class="o">.</span><span class="n">build</span> <span class="k">do</span> <span class="o">|</span><span class="n">loop_builder</span><span class="o">|</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-44'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-44">&#182;</a>
+        </div>
+        <p>Recursively generate code for the body of this loop
+A call to <code>code_gen</code> potentially adds more basic blocks, so we need to
+update our <code>builder</code> to point to the new basic block</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">loop_builder</span> <span class="o">=</span> <span class="n">code_gen</span><span class="p">(</span><span class="n">code</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">loop_builder</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-45'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-45">&#182;</a>
+        </div>
+        <p>After executing the loop body jump back to the head to check for the loop condition</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>        <span class="n">loop_builder</span><span class="o">.</span><span class="n">br</span><span class="p">(</span><span class="n">loop_head</span><span class="p">)</span>
+      <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-46'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-46">&#182;</a>
+        </div>
+        <p>return a builder that works on <code>loop_next</code> so that the callee can continue building stuff <em>after</em> the loop</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>      <span class="n">builder</span><span class="o">.</span><span class="n">position_at_end</span><span class="p">(</span><span class="n">loop_next</span><span class="p">)</span>
+      <span class="k">return</span> <span class="n">builder</span>
+  <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-47'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-47">&#182;</a>
+        </div>
+        <p>This function adds a call to putchar(@data[@offset]) to the current basic block</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">put</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span> <span class="n">builder</span><span class="o">.</span><span class="n">call</span><span class="p">(</span><span class="vi">@putchar</span><span class="p">,</span> <span class="n">deref</span><span class="p">(</span><span class="n">builder</span><span class="p">))</span> <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-48'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-48">&#182;</a>
+        </div>
+        <p>This function returns a node that contains the value <code>@data[@offset]</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">offs</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="k">return</span> <span class="n">b</span><span class="o">.</span><span class="n">gep</span><span class="p">(</span><span class="vi">@data</span><span class="p">,</span><span class="o">[</span><span class="n">b</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="vi">@offset</span><span class="p">)</span><span class="o">]</span><span class="p">)</span> <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-49'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-49">&#182;</a>
+        </div>
+        <p>This function returns a node that contains the value of <code>@data[@offset]</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">deref</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="k">return</span> <span class="n">b</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">offs</span><span class="p">(</span><span class="n">b</span><span class="p">))</span> <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-50'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-50">&#182;</a>
+        </div>
+        <p>This function takes a node of type integer and stores its value at <code>@data[@offset]</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">store</span><span class="p">(</span><span class="n">b</span><span class="p">,</span><span class="n">val</span><span class="p">)</span> <span class="k">return</span> <span class="n">b</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">val</span><span class="p">,</span><span class="n">offs</span><span class="p">(</span><span class="n">b</span><span class="p">))</span> <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-51'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-51">&#182;</a>
+        </div>
+        <p>These functions will add code that increments/decrements the value of <code>@data[@offset]</code></p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">inc</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span> <span class="n">store</span><span class="p">(</span><span class="n">builder</span><span class="p">,</span> <span class="n">builder</span><span class="o">.</span><span class="n">add</span><span class="p">(</span> <span class="n">deref</span><span class="p">(</span><span class="n">builder</span><span class="p">),</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">1</span><span class="p">)))</span> <span class="k">end</span>
+  <span class="k">def</span> <span class="nf">dec</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span> <span class="n">store</span><span class="p">(</span><span class="n">builder</span><span class="p">,</span> <span class="n">builder</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span> <span class="n">deref</span><span class="p">(</span><span class="n">builder</span><span class="p">),</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">1</span><span class="p">)))</span> <span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-52'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-52">&#182;</a>
+        </div>
+        <p>These functions will add code that increments/decrements <code>@offset</code> (e.g. move the brainfuck pointer to the left/right)</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre>  <span class="k">def</span> <span class="nf">right</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span>
+    <span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">builder</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="vi">@offset</span><span class="p">),</span><span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">1</span><span class="p">)),</span> <span class="vi">@offset</span><span class="p">)</span>
+  <span class="k">end</span>
+
+  <span class="k">def</span> <span class="nf">left</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span>
+    <span class="n">builder</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="n">builder</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">builder</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="vi">@offset</span><span class="p">),</span><span class="no">LLVM</span><span class="o">::</span><span class="no">Int</span><span class="p">(</span><span class="mi">1</span><span class="p">)),</span> <span class="vi">@offset</span><span class="p">)</span>
+  <span class="k">end</span>
+
+<span class="k">end</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-53'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-53">&#182;</a>
+        </div>
+        <p>We are targeting x86 code</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="no">LLVM</span><span class="o">.</span><span class="n">init_x86</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-54'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-54">&#182;</a>
+        </div>
+        <p>Create a new Module (All LLVM functions need to be inside of a module</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">mod</span> <span class="o">=</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">Module</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="s2">&quot;brainfuck&quot;</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-55'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-55">&#182;</a>
+        </div>
+        <p>Create a new Code Generator</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">gen</span> <span class="o">=</span> <span class="no">Generator</span><span class="o">.</span><span class="n">new</span>
+
+<span class="n">halloworld</span> <span class="o">=</span> <span class="o">&lt;&lt;</span><span class="no">EOF</span>
+<span class="sh">++++++++++ [ &gt;+++++++&gt;++++++++++&gt;+++&gt;+&lt;&lt;&lt;&lt;- ]</span>
+<span class="sh">&gt;++.&gt;+.+++++++..+++.&gt;++.&lt;&lt;+++++++++++++++.</span>
+<span class="sh">&gt;.+++.------.--------.&gt;+.&gt;.+++.</span>
+<span class="no">EOF</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-56'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-56">&#182;</a>
+        </div>
+        <p>Use the code generator to build the main function from the <code>halloworld</code> brainfuck code</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">fn</span> <span class="o">=</span> <span class="n">gen</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="n">halloworld</span><span class="p">,</span><span class="s2">&quot;main&quot;</span><span class="p">,</span><span class="n">mod</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-57'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-57">&#182;</a>
+        </div>
+        <p>Verify the byte code</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">mod</span><span class="o">.</span><span class="n">verify</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-58'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-58">&#182;</a>
+        </div>
+        <p>Make a JIT VM</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="nb">puts</span> <span class="s2">&quot;making jit&quot;</span>
+<span class="n">jit</span> <span class="o">=</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">JITCompiler</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-59'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-59">&#182;</a>
+        </div>
+        <p>Add some optimizations &ndash; for example &ldquo;++++++++++&rdquo; will compile to a single addition of 10 instead of 10 increments</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">pmgr</span> <span class="o">=</span> <span class="no">LLVM</span><span class="o">::</span><span class="no">PassManager</span><span class="o">.</span><span class="n">new</span><span class="p">(</span><span class="n">jit</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-60'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-60">&#182;</a>
+        </div>
+        <p>Tries to convert variables created on the stack with <code>alloca</code> into registers</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">pmgr</span><span class="o">.</span><span class="n">mem2reg!</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-61'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-61">&#182;</a>
+        </div>
+        <p>Combines long sequences of simple instructions into single ones think of all
+those &ldquo;++++++&rdquo;</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">pmgr</span><span class="o">.</span><span class="n">instcombine!</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-62'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-62">&#182;</a>
+        </div>
+        <p>Reorders expressions for later passes</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">pmgr</span><span class="o">.</span><span class="n">reassociate!</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-63'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-63">&#182;</a>
+        </div>
+        <p>Combines operations on constants into their result</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">pmgr</span><span class="o">.</span><span class="n">constprop!</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-64'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-64">&#182;</a>
+        </div>
+        <p>Eliminates dead code</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">pmgr</span><span class="o">.</span><span class="n">adce!</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-65'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-65">&#182;</a>
+        </div>
+        <p>Eliminates dead store instructions</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">pmgr</span><span class="o">.</span><span class="n">dse!</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-66'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-66">&#182;</a>
+        </div>
+        <p>Apply optimization</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">pmgr</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">mod</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-67'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-67">&#182;</a>
+        </div>
+        <p>Run the Code inside of the JIT VM</p>
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="n">jit</span><span class="o">.</span><span class="n">run_function</span><span class="p">(</span><span class="n">mod</span><span class="o">.</span><span class="n">functions</span><span class="o">[</span><span class="s2">&quot;main&quot;</span><span class="o">]</span><span class="p">)</span><span class="o">.</span><span class="n">to_i</span></pre></div>
+      </td>
+    </tr>
+    <tr id='section-68'>
+      <td class=docs>
+        <div class="pilwrap">
+          <a class="pilcrow" href="#section-68">&#182;</a>
+        </div>
+        <p>Generate a native binary</p>
+
+      </td>
+      <td class=code>
+        <div class='highlight'><pre><span class="nb">puts</span> <span class="s2">&quot;compiling to native&quot;</span>
+<span class="n">mod</span><span class="o">.</span><span class="n">write_bitcode</span><span class="p">(</span><span class="no">File</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;test.bc&quot;</span><span class="p">,</span><span class="s2">&quot;w&quot;</span><span class="p">))</span>
+<span class="nb">system</span><span class="p">(</span><span class="s2">&quot;llc test.bc&quot;</span><span class="p">)</span>
+<span class="nb">system</span><span class="p">(</span><span class="s2">&quot;gcc test.s -o test.out&quot;</span><span class="p">)</span></pre></div>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
