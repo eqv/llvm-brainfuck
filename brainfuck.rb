@@ -133,23 +133,35 @@ class Generator
     end
   end
 
-  #This function parses a brainfuck string and returns an intermediate representation.
+#This function parses a brainfuck string and returns an intermediate representation.
 # For example the string:
 #   `"++[>++<-] calculate 2*2 ."`
 # becomes the intermediate representation:
 #   `["+","+", [ ">", "+","+","<","-" ] "."]`
-  def parse(data)
-    #Remove all non-brainfuck instruction characters (they are considered to be comments in brainfuck)
-    data = data.gsub(/[^\[\]\-+,.<>]/,"")
-    #match the outermost pair of `[]` (e.g. the outermost loop) as well as all
-    #simple instructions (e.g. `.<>+-`) before and after the loop
-    md = data.match(/\A(?<beg>[^\[]+)\[(?<in>.*)\](?<out>[^\[]+)\Z/)
-    #If there happens to be a loop we will split all the simple instructions into an array, holding one string per instruction and another Array that contains the loop body
-    if md
-      return md[:beg].split("") + [parse(md[:in])] + md[:out].split("")
+  def parse(string)
+#`stack` will hold the intermediate representation
+#the first element is the acctual representation, every new scope created by a nested pair of brackets is then added afterwards while the parser is in it. Thus we can allways append our tokens to `stack.last` and return to the parent scope by `stack.pop`.
+    stack = [[]]
+#Remove all non-brainfuck instruction characters (they are considered to be comments in brainfuck)
+    string = string.gsub(/[^\[\]\-+,.<>]/,"")
+    string.split("").each do |tok|
+      case tok
+        #When we see an opening bracket we create a new scope and add it to the current scope
+        when  "["
+          new_scope = []
+          stack.last << new_scope
+          #Then we make this scope the current by appending it to the stack
+          stack.push(new_scope)
+        #When we see a closing bracket we return to the last scope by removing the current scope from the stack
+        when "]"
+          stack.pop
+        #All other characters are simply added to the current scope
+        else
+          stack.last << tok
+      end
     end
-    #If there is no loop the simply splitting suffices
-    return data.split("")
+    #return the outmost scope
+    return stack.first
   end
 
   #After we parsed our string into `code` we will now append all the necessary
